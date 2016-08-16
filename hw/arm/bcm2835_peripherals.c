@@ -46,6 +46,11 @@ static void bcm2835_peripherals_init(Object *obj)
     object_property_add_child(obj, "ic", OBJECT(&s->ic), NULL);
     qdev_set_parent_bus(DEVICE(&s->ic), sysbus_get_default());
 
+    /* System Timer */
+    object_initialize(&s->timer, sizeof(s->timer), TYPE_BCM2835_TIMER);
+    object_property_add_child(obj, "timer", OBJECT(&s->timer), NULL);
+    qdev_set_parent_bus(DEVICE(&s->timer), sysbus_get_default());
+
     /* UART0 */
     s->uart0 = SYS_BUS_DEVICE(object_new("pl011"));
     object_property_add_child(obj, "uart0", OBJECT(s->uart0), NULL);
@@ -145,6 +150,22 @@ static void bcm2835_peripherals_realize(DeviceState *dev, Error **errp)
     memory_region_add_subregion(&s->peri_mr, ARMCTRL_IC_OFFSET,
                 sysbus_mmio_get_region(SYS_BUS_DEVICE(&s->ic), 0));
     sysbus_pass_irq(SYS_BUS_DEVICE(s), SYS_BUS_DEVICE(&s->ic));
+
+    /* System Timer */
+    object_property_set_bool(OBJECT(&s->timer), true, "realized", &err);
+    if (err) {
+        error_propagate(errp, err);
+        return;
+    }
+
+    memory_region_add_subregion(&s->peri_mr, ST_OFFSET,
+                sysbus_mmio_get_region(SYS_BUS_DEVICE(&s->timer), 0));
+    sysbus_connect_irq(SYS_BUS_DEVICE(&s->timer), 0,
+        qdev_get_gpio_in_named(DEVICE(&s->ic), BCM2835_IC_GPU_IRQ,
+                               INTERRUPT_TIMER1));
+    sysbus_connect_irq(SYS_BUS_DEVICE(&s->timer), 0,
+        qdev_get_gpio_in_named(DEVICE(&s->ic), BCM2835_IC_GPU_IRQ,
+                               INTERRUPT_TIMER3));
 
     /* UART0 */
     qdev_prop_set_chr(DEVICE(s->uart0), "chardev", serial_hds[0]);
